@@ -1,0 +1,3 @@
+---
+eks_cluster_name: adcash-test-eks
+aws_region: eu-north-1

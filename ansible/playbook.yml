@@ -1,0 +1,7 @@
+---
+
+- name: Run Playbook
+  hosts: dkr-prom
+  become: true
+  roles:
+    - ./deploy-gandalf-colombo
