@@ -1,0 +1,6 @@
+---
+docker_image_name: gandalf-colombo
+docker_image_tag: latest
+app_container_port: 80
+eks_namespace: default
+prometheus_version: 3.4.0

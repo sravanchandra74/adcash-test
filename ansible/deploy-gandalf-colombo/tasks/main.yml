@@ -1,0 +1,443 @@
+---
+- name: Install Docker
+  become: true
+  yum:
+    name: docker
+    state: present
+
+- name: Start and enable Docker
+  become: true
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Add ec2-user to docker group
+  become: true
+  ansible.builtin.user:
+    name: ec2-user
+    groups: docker
+    append: yes
+  register: docker_group_result
+
+- name: Re-establish connection for docker group changes to take effect
+  meta: reset_connection
+  when: docker_group_result.changed
+
+- name: Ensure /home/ec2-user/webapp directory exists
+  ansible.builtin.file:
+    path: /home/ec2-user/webapp
+    state: directory
+    owner: ec2-user
+    group: ec2-user
+    mode: '0755'
+
+- name: Ensure /home/ec2-user/webapp/static directory exists
+  ansible.builtin.file:
+    path: /home/ec2-user/webapp/static
+    state: directory
+    owner: ec2-user
+    group: ec2-user
+    mode: '0755'
+
+- name: Copy application source files to EC2
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: ec2-user
+    group: ec2-user
+    mode: '0644'
+  loop:
+    - { src: "app.py", dest: "/home/ec2-user/webapp/app.py" }
+    - { src: "Dockerfile", dest: "/home/ec2-user/webapp/Dockerfile" }
+    - { src: "requirements.txt", dest: "/home/ec2-user/webapp/requirements.txt" }
+    - { src: "gandalf.jpg", dest: "/home/ec2-user/webapp/static/gandalf.jpg" }
+
+- name: Get AWS account ID
+  ansible.builtin.shell: aws sts get-caller-identity --query Account --output text
+  register: aws_account_id
+  changed_when: false
+
+- name: Verify AWS CLI can describe EKS cluster
+  ansible.builtin.shell: aws eks describe-cluster --name {{ eks_cluster_name }} --region {{ aws_region }}
+  register: eks_describe
+  changed_when: false
+
+- name: Ensure ~/.kube directory exists for ec2-user
+  ansible.builtin.file:
+    path: /home/ec2-user/.kube
+    state: directory
+    owner: ec2-user
+    group: ec2-user
+    mode: '0700'
+
+# --- Critical Sequence Starts Here ---
+# 1. First update kubeconfig
+- name: Generate kubeconfig for EKS (initial setup)
+  become: false
+  ansible.builtin.shell: |
+    aws eks update-kubeconfig --region {{ aws_region }} --name {{ eks_cluster_name }}
+  args:
+    executable: /bin/bash
+    chdir: /home/ec2-user
+  environment:
+    AWS_DEFAULT_REGION: "{{ aws_region }}"
+  register: kubeconfig_update_initial_result
+  failed_when: kubeconfig_update_initial_result.rc != 0
+
+# 2. Verify initial kubectl connectivity (should work but with limited permissions)
+- name: Verify kubectl can reach cluster (basic connectivity)
+  become: false
+  ansible.builtin.shell: kubectl cluster-info
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+  register: cluster_info
+  failed_when: "'running' not in cluster_info.stdout"
+  changed_when: false
+
+# 3. Apply aws-auth ConfigMap to grant full permissions
+- name: Generate and apply aws-auth ConfigMap patch for build server IAM role
+  become: false
+  ansible.builtin.shell: |
+    # Get the ARN of the instance profile role
+    EC2_ROLE_ARN=$(aws ec2 describe-instances \
+      --filters "Name=instance-id,Values=$(ec2-metadata --instance-id | awk '{print $2}')" \
+      --query "Reservations[0].Instances[0].IamInstanceProfile.Arn" \
+      --output text --region {{ aws_region }})
+    
+    # Create the patch YAML
+    cat <<EOF > /home/ec2-user/aws-auth-patch.yaml
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: aws-auth
+      namespace: kube-system
+    data:
+      mapRoles: |
+        - rolearn: arn:aws:iam::160885250701:role/adcash-test-ec2-build-server-role
+          username: build-server
+          groups:
+            - system:masters
+        - rolearn: $$EC2_ROLE_ARN
+          username: build-server
+          groups:
+            - system:bootstrappers
+            - system:nodes
+    EOF
+    
+    kubectl apply -f /home/ec2-user/aws-auth-patch.yaml --overwrite=true
+  args:
+    executable: /bin/bash
+    chdir: /home/ec2-user
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+    AWS_DEFAULT_REGION: "{{ aws_region }}"
+  register: aws_auth_patch_result
+  failed_when: aws_auth_patch_result.rc != 0
+
+- name: Pause to allow aws-auth changes to propagate
+  ansible.builtin.pause:
+    seconds: 15
+
+# 4. Verify full permissions are now available
+- name: Verify kubectl permissions with get nodes
+  become: false
+  ansible.builtin.shell: kubectl get nodes
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+  register: get_nodes_result
+  failed_when: get_nodes_result.rc != 0
+  changed_when: false
+
+- name: Verify kubectl permissions with get namespaces
+  become: false
+  ansible.builtin.shell: kubectl get ns
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+  register: get_ns_result
+  failed_when: get_ns_result.rc != 0
+  changed_when: false
+# --- Critical Sequence Ends Here ---
+
+- name: Build Docker image
+  become: true
+  ansible.builtin.command: docker build -t {{ docker_image_name }}-app:latest .
+  args:
+    chdir: /home/ec2-user/webapp
+  register: docker_build_result
+
+- name: Get ECR login password
+  become: false
+  ansible.builtin.shell: |
+    aws ecr get-login-password --region {{ aws_region }}
+  register: ecr_login_password
+  no_log: true
+  environment:
+    AWS_DEFAULT_REGION: "{{ aws_region }}"
+
+- name: Docker login to ECR
+  become: true
+  ansible.builtin.command: |
+    docker login --username AWS --password-stdin {{ aws_account_id.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com
+  args:
+    stdin: "{{ ecr_login_password.stdout }}"
+  register: docker_login_result
+  changed_when: true
+  failed_when: "'Login Succeeded' not in docker_login_result.stdout and 'already logged in' not in docker_login_result.stderr"
+
+- name: Tag Docker image for ECR
+  become: true
+  ansible.builtin.command: docker tag {{ docker_image_name }}-app:latest {{ aws_account_id.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ docker_image_name }}-app:latest
+  args:
+    chdir: /home/ec2-user/webapp
+  register: docker_tag_result
+  failed_when: docker_tag_result.rc != 0
+
+- name: Push Docker image to ECR
+  become: true
+  ansible.builtin.command: docker push {{ aws_account_id.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ docker_image_name }}-app:latest
+  args:
+    chdir: /home/ec2-user/webapp
+  register: docker_push_result
+  failed_when: docker_push_result.rc != 0
+
+# Rest of your tasks remain the same...
+
+# --- Kubernetes Deployment ---
+# Removed: Redundant kubectl download and kubeconfig generation tasks.
+# These are handled by your `run.sh` script, which should ensure correct permissions.
+
+- name: Apply Kubernetes deployment and service
+  become: false # Run as ec2-user, relying on kubeconfig setup by run.sh
+  ansible.builtin.shell: |
+    kubectl apply -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: {{ docker_image_name }}-app
+      namespace: {{ eks_namespace }}
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: {{ docker_image_name }}-app
+      template:
+        metadata:
+          labels:
+            app: {{ docker_image_name }}-app
+        spec:
+          containers:
+          - name: {{ docker_image_name }}-app
+            image: {{ aws_account_id.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ docker_image_name }}-app:latest # Use the ECR image
+            ports:
+            - containerPort: 80
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {{ docker_image_name }}-service
+      namespace: {{ eks_namespace }}
+    spec:
+      type: LoadBalancer
+      selector:
+        app: {{ docker_image_name }}-app
+      ports:
+        - protocol: TCP
+          port: 80
+          targetPort: 80
+    EOF
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config # Explicitly set kubeconfig path
+  register: kube_apply_result
+  failed_when: kube_apply_result.rc != 0
+
+- name: Check if pod already exists and is ready
+  become: false
+  ansible.builtin.shell: |
+    kubectl get pods -n {{ eks_namespace }} -l app={{ docker_image_name }}-app \
+      -o jsonpath="{.items[0].status.containerStatuses[0].ready}" | grep -q "true"
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+  register: pod_status_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Verify pod readiness (only if not already ready)
+  become: false
+  ansible.builtin.shell: |
+    kubectl wait --namespace {{ eks_namespace }} \
+      --for=condition=ready \
+      pod -l app={{ docker_image_name }}-app \
+      --timeout=300s
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+  register: pod_ready_check
+  until: pod_ready_check.rc == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+  when: pod_status_check.rc != 0
+
+# --- Prometheus Installation (on EC2) ---
+- name: Ensure Prometheus installation directories exist
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt
+    - /etc/prometheus
+    - /var/lib/prometheus
+
+- name: Download Prometheus binaries if not already present
+  become: true
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    dest: "/opt/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    mode: '0644'
+  register: prometheus_download
+
+- name: Extract Prometheus archive
+  become: true
+  ansible.builtin.unarchive:
+    src: "/opt/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+    dest: "/opt/"
+    remote_src: true
+    creates: "/opt/prometheus-{{ prometheus_version }}.linux-amd64/prometheus"
+  when: prometheus_download.changed
+
+- name: Create symlink to current version
+  become: true
+  ansible.builtin.file:
+    src: "/opt/prometheus-{{ prometheus_version }}.linux-amd64"
+    dest: "/opt/prometheus_current"
+    state: link
+    force: yes
+
+- name: Install Prometheus binaries
+  become: true
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    remote_src: true
+    mode: '0755'
+  loop:
+    - { src: '/opt/prometheus_current/prometheus', dest: '/usr/local/bin/prometheus' }
+    - { src: '/opt/prometheus_current/promtool', dest: '/usr/local/bin/promtool' }
+
+- name: Ensure Prometheus user exists
+  become: true
+  ansible.builtin.user:
+    name: prometheus
+    system: true
+    shell: /bin/false
+    home: /var/lib/prometheus
+    create_home: false
+
+- name: Set proper permissions for Prometheus directories
+  become: true
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: '/etc/prometheus', mode: '0755' }
+    - { path: '/var/lib/prometheus', mode: '0750' }
+
+- name: Check if Prometheus is already installed (register)
+  become: true
+  ansible.builtin.stat:
+    path: /usr/local/bin/prometheus
+  register: prometheus_installed
+
+- name: Configure Prometheus scrape configs
+  become: true
+  ansible.builtin.template:
+    src: prometheus.yml.j2 # This template file must exist in your Ansible templates directory
+    dest: /etc/prometheus/prometheus.yml
+    owner: prometheus
+    group: prometheus
+    mode: '0644'
+
+- name: Create Prometheus systemd service file
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/prometheus.service
+    content: |
+      [Unit]
+      Description=Prometheus
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      User=prometheus
+      Group=prometheus
+      Type=simple
+      ExecStart=/usr/local/bin/prometheus \
+          --config.file /etc/prometheus/prometheus.yml \
+          --storage.tsdb.path /var/lib/prometheus/data \
+          --web.listen-address="0.0.0.0:9090" \
+          --web.enable-lifecycle
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd and restart prometheus
+
+- name: Start Prometheus service
+  become: true
+  ansible.builtin.systemd:
+    name: prometheus
+    state: started
+    enabled: true
+    daemon_reload: true
+  register: prometheus_service_status
+
+# --- Validation ---
+- name: Wait for ELB to be provisioned
+  become: false
+  ansible.builtin.shell: |
+    for i in {1..50}; do # Max 500 seconds (50 * 10s) wait time
+      DNS=$(kubectl get svc {{ docker_image_name }}-service -n {{ eks_namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}');
+      if [[ ! -z "$DNS" ]]; then echo "$DNS" && break; fi;
+      echo "Waiting for LoadBalancer DNS to be provisioned... (attempt $i/50)" >&2;
+      sleep 10;
+    done
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+  register: elb_output
+  changed_when: false
+  failed_when: "elb_output.stdout is not defined or elb_output.stdout | length == 0"
+
+- name: Print application endpoint URLs
+  ansible.builtin.debug:
+    msg: |
+      The application is deployed successfully.
+      Access the endpoints below in your browser:
+      http://{{ elb_output.stdout }}:80
+
+- name: Test Gandalf endpoint via curl
+  ansible.builtin.shell: "curl -s -o /dev/null -w '%{http_code}' http://{{ elb_output.stdout }}:80/gandalf"
+  register: gandalf_curl_status
+  retries: 5
+  delay: 10
+  until: gandalf_curl_status.rc == 0 and gandalf_curl_status.stdout == "200"
+
+- name: Test Colombo endpoint via curl
+  ansible.builtin.shell: "curl -s -o /dev/null -w '%{http_code}' http://{{ elb_output.stdout }}:80/colombo"
+  register: colombo_curl_status
+  retries: 5
+  delay: 10
+  until: colombo_curl_status.rc == 0 and colombo_curl_status.stdout == "200"
+
+- name: Show HTTP response statuses
+  ansible.builtin.debug:
+    msg: |
+      Gandalf Endpoint Status: {{ gandalf_curl_status.stdout }}
+      Colombo Endpoint Status: {{ colombo_curl_status.stdout }}
