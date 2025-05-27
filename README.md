@@ -2,7 +2,6 @@
 
 This project gives you a full DevOps pipeline! We're deploying a simple **Flask web application** on **AWS EKS** (Amazon Elastic Kubernetes Service) and then monitoring it effectively with **Prometheus**, which runs on a dedicated **EC2 instance**. Our Flask app is designed to track and expose metrics, specifically counting requests to its `/gandalf` and `/colombo` endpoints.
 
-
 ---
 
 ## 🚀 Get Started
@@ -107,16 +106,16 @@ Once your application is deployed on EKS, it'll be accessible via an AWS Applica
 | `/metrics`   | The Prometheus-compatible metrics endpoint. |
 
 Just replace <EKS-ALB-DNS> with the actual DNS name of your EKS Load Balancer:
-![image](https://github.com/user-attachments/assets/87edae1b-8279-426f-bf49-60023fc4abe2)
+![image](https://github.com/user-attachments/assets/0d6b5caf-c8d5-474c-aefc-4944d1c47138)
 
 http://<EKS-ALB-DNS>/gandalf
-![image](https://github.com/user-attachments/assets/2cbbdabf-f1d1-46d5-9f0e-4a47600edb33)
+![image](https://github.com/user-attachments/assets/53070b91-7f96-4f29-bdf5-dcbca8a16feb)
 
 http://<EKS-ALB-DNS>/colombo
-![image](https://github.com/user-attachments/assets/cb1adf67-9d8f-477b-9d6e-903aad65ef9e)
+![image](https://github.com/user-attachments/assets/e83147c0-326a-4d0d-8d56-dcb644d178d7)
 
 http://<EKS-ALB-DNS>/metrics
-![image](https://github.com/user-attachments/assets/21e4399c-2eb3-4276-bf8c-68cc54e3e73a)
+![image](https://github.com/user-attachments/assets/cec82a30-3f55-4eaf-84dc-9a71d76384ae)
 
 ---
 
@@ -127,18 +126,18 @@ As mentioned, Prometheus is installed directly on your dedicated EC2 instance.
 To access the Prometheus UI, simply navigate to:
 
 `http://<EC2-Public-IP>:9090`
-![image](https://github.com/user-attachments/assets/ca581bd5-3d00-43c9-8fde-21981a28ce50)
-![image](https://github.com/user-attachments/assets/756bbb28-3381-4aaa-8692-94e16ab52772)
+![image](https://github.com/user-attachments/assets/be2ac955-4a45-4953-977f-f85c545174e0)
+![image](https://github.com/user-attachments/assets/2bf6f527-baeb-4836-aae0-6895442a4f83)
 
 You can then query these specific metrics to see your application's performance:
 
 * `app_requests_gandalf_total`
-![image](https://github.com/user-attachments/assets/258881d0-3878-465b-a368-e0e0faa135b8)
-![image](https://github.com/user-attachments/assets/7adddcd0-35df-4ddb-b3a0-9e21ef6bd5a2)
+![image](https://github.com/user-attachments/assets/0a35a8b9-145a-4ed6-9e07-8ca550ae5976)
+![image](https://github.com/user-attachments/assets/229c8e2a-5f74-4ddf-9b6b-ef96d2365b24)
 
 * `app_requests_colombo_total`
-![image](https://github.com/user-attachments/assets/3e43f88a-b946-492b-8de4-7acee786e6e9)
-![image](https://github.com/user-attachments/assets/6ac72848-afae-49c0-9c03-49ce885429bc)
+![image](https://github.com/user-attachments/assets/a9b5d77b-828c-4d58-9df4-c961f6c6bb80)
+![image](https://github.com/user-attachments/assets/15e53118-4e11-4e69-900c-d129e5b15b3b)
 
 ---
 
