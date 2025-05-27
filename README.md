@@ -77,54 +77,67 @@ Ready to see it in action? Follow these simple steps:
 First, get the code onto your machine:
 
 ```bash
-git clone <repo-url> # Replace <repo-url> with your repository's URL
+git clone <repo-url> # Replace <repo-url> with repository's URL
 cd adcash-test
 
 2️⃣ Run the Interactive Script
 This script makes it easy to manage the project's lifecycle:
 
-Bash
-
+```bash
 sh run.sh
+
 You'll then see a menu with these options:
 
-Option	Description
-1	Provisions infrastructure using Terraform and deploys the app using Ansible.
-2	Destroys all infrastructure provisioned by Terraform.
-3	Exits the interface.
-
-Export to Sheets
+| Option | Description                                               |
+| :----- | :-------------------------------------------------------- |
+| `1`    | Provisions infrastructure using Terraform and deploys the app using Ansible. |
+| `2`    | Destroys all infrastructure provisioned by Terraform.     |
+| `3`    | Exits the interface.                                      |
 
 ---
 
 🌍 Accessing the App (via EKS Load Balancer)
 Once your application is deployed on EKS, it'll be accessible via an AWS Application Load Balancer. You can reach the following endpoints:
 
-Endpoint	Description
-/gandalf	Serves a Gandalf image and counts requests.
-/colombo	Displays the current time in Colombo and counts requests.
-/metrics	The Prometheus-compatible metrics endpoint.
+| Endpoint     | Description                                |
+| :----------- | :----------------------------------------- |
+| `/gandalf`   | Serves a Gandalf image and counts requests. |
+| `/colombo`   | Displays the current time in Colombo and counts requests. |
+| `/metrics`   | The Prometheus-compatible metrics endpoint. |
 
-Export to Sheets
 Just replace <EKS-ALB-DNS> with the actual DNS name of your EKS Load Balancer:
+![image](https://github.com/user-attachments/assets/87edae1b-8279-426f-bf49-60023fc4abe2)
 
 http://<EKS-ALB-DNS>/gandalf
+![image](https://github.com/user-attachments/assets/2cbbdabf-f1d1-46d5-9f0e-4a47600edb33)
+
 http://<EKS-ALB-DNS>/colombo
+![image](https://github.com/user-attachments/assets/cb1adf67-9d8f-477b-9d6e-903aad65ef9e)
+
 http://<EKS-ALB-DNS>/metrics
+![image](https://github.com/user-attachments/assets/21e4399c-2eb3-4276-bf8c-68cc54e3e73a)
 
 ---
 
-📊 Prometheus Monitoring
+## 📊 Prometheus Monitoring
+
 As mentioned, Prometheus is installed directly on your dedicated EC2 instance.
 
 To access the Prometheus UI, simply navigate to:
 
-http://<EC2-Public-IP>:9090
+`http://<EC2-Public-IP>:9090`
+![image](https://github.com/user-attachments/assets/ca581bd5-3d00-43c9-8fde-21981a28ce50)
+![image](https://github.com/user-attachments/assets/756bbb28-3381-4aaa-8692-94e16ab52772)
 
 You can then query these specific metrics to see your application's performance:
 
-app_requests_gandalf_total
-app_requests_colombo_total
+* `app_requests_gandalf_total`
+![image](https://github.com/user-attachments/assets/258881d0-3878-465b-a368-e0e0faa135b8)
+![image](https://github.com/user-attachments/assets/7adddcd0-35df-4ddb-b3a0-9e21ef6bd5a2)
+
+* `app_requests_colombo_total`
+![image](https://github.com/user-attachments/assets/3e43f88a-b946-492b-8de4-7acee786e6e9)
+![image](https://github.com/user-attachments/assets/6ac72848-afae-49c0-9c03-49ce885429bc)
 
 ---
 
