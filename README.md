@@ -17,34 +17,44 @@ Before you dive in, make sure you have a few things ready on your **local machin
 
 Here's how the project is organized. This structure helps keep everything tidy and easy to navigate:
 
-/adcash-test
-├── ansible/                  # Ansible playbooks for server setup and application deployment
-│ ├── ansible.cfg
-│ ├── playbook.yml
-│ └── deploy-gandalf-colombo/ # Ansible role for Flask app and Prometheus setup
-│     ├── defaults/main.yml
-│     ├── files/
-│     │ ├── app.py
-│     │ ├── Dockerfile
-│     │ ├── gandalf.jpg
-│     │ └── requirements.txt
-│     ├── handlers/main.yml
-│     ├── meta/main.yml
-│     ├── tasks/main.yml
-│     ├── templates/prometheus.yml.j2
-│     └── vars/main.yml
-├── terraform/                # Terraform configurations for AWS infrastructure
-│ ├── ec2.tf
-│ ├── eks.tf
-│ ├── ecr.tf
-│ ├── iam.tf
-│ ├── network.tf
-│ ├── outputs.tf
-│ ├── providers.tf
-│ ├── variables.tf
-│ └── main.tf
-└── run.sh                    # Interactive script to run the project
+## 📁 Project Structure
 
+```bash
+adcash-test/
+├── ansible/                            # Ansible playbooks for configuration and deployment
+│   ├── ansible.cfg
+│   ├── playbook.yml
+│   └── deploy-gandalf-colombo/        # Ansible role for Flask app and Prometheus
+│       ├── defaults/
+│       │   └── main.yml
+│       ├── files/
+│       │   ├── app.py
+│       │   ├── Dockerfile
+│       │   ├── gandalf.jpg
+│       │   └── requirements.txt
+│       ├── handlers/
+│       │   └── main.yml
+│       ├── meta/
+│       │   └── main.yml
+│       ├── tasks/
+│       │   └── main.yml
+│       ├── templates/
+│       │   └── prometheus.yml.j2
+│       └── vars/
+│           └── main.yml
+├── terraform/                         # Terraform configurations for AWS
+│   ├── ec2.tf
+│   ├── eks.tf
+│   ├── ecr.tf
+│   ├── iam.tf
+│   ├── network.tf
+│   ├── outputs.tf
+│   ├── providers.tf
+│   ├── variables.tf
+│   └── main.tf
+├── run.sh                             # Bash script for interactive provisioning
+
+```
 ---
 
 ## ✅ What This Project Does
@@ -75,15 +85,15 @@ Ready to see it in action? Follow these simple steps:
 ### 1️⃣ Clone the Repository
 
 First, get the code onto your machine:
-
+```bash
 git clone <repo-url> # Replace <repo-url> with repository's URL
 cd adcash-test
-
+```
 2️⃣ Run the Interactive Script
 This script makes it easy to manage the project's lifecycle:
-
+```bash
 sh run.sh
-
+```
 You'll then see a menu with these options:
 
 | Option | Description                                               |
@@ -103,16 +113,16 @@ Once your application is deployed on EKS, it'll be accessible via an AWS Applica
 | `/colombo`   | Displays the current time in Colombo and counts requests. |
 | `/metrics`   | The Prometheus-compatible metrics endpoint. |
 
-Just replace <EKS-ALB-DNS> with the actual DNS name of your EKS Load Balancer:
+* Just replace `<EKS-ALB-DNS>` with the actual DNS name of your EKS Load Balancer:
 ![image](https://github.com/user-attachments/assets/0d6b5caf-c8d5-474c-aefc-4944d1c47138)
 
-http://<EKS-ALB-DNS>/gandalf
+* http://`<EKS-ALB-DNS>`/gandalf
 ![image](https://github.com/user-attachments/assets/53070b91-7f96-4f29-bdf5-dcbca8a16feb)
 
-http://<EKS-ALB-DNS>/colombo
+* http://`<EKS-ALB-DNS>`/colombo
 ![image](https://github.com/user-attachments/assets/e83147c0-326a-4d0d-8d56-dcb644d178d7)
 
-http://<EKS-ALB-DNS>/metrics
+* http://`<EKS-ALB-DNS>`/metrics
 ![image](https://github.com/user-attachments/assets/cec82a30-3f55-4eaf-84dc-9a71d76384ae)
 
 ---
