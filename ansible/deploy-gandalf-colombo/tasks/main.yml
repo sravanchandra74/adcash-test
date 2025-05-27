@@ -278,6 +278,22 @@
   changed_when: false
   when: pod_status_check.rc != 0
 
+- name: Get LoadBalancer hostname (ELB) for the service
+  become: false
+  ansible.builtin.shell: |
+    kubectl get svc {{ docker_image_name }}-service -n {{ eks_namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  environment:
+    KUBECONFIG: /home/ec2-user/.kube/config
+  register: elb_hostname
+  retries: 10
+  delay: 15
+  until: elb_hostname.stdout != ""
+  changed_when: false
+
+- name: Show LoadBalancer hostname (ELB DNS)
+  debug:
+    msg: "ELB DNS hostname: {{ elb_hostname.stdout }}"
+
 # --- Prometheus Installation (on EC2) ---
 - name: Ensure Prometheus installation directories exist
   become: true
@@ -400,37 +416,23 @@
   register: prometheus_service_status
 
 # --- Validation ---
-- name: Wait for ELB to be provisioned
-  become: false
-  ansible.builtin.shell: |
-    for i in {1..50}; do # Max 500 seconds (50 * 10s) wait time
-      DNS=$(kubectl get svc {{ docker_image_name }}-service -n {{ eks_namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}');
-      if [[ ! -z "$DNS" ]]; then echo "$DNS" && break; fi;
-      echo "Waiting for LoadBalancer DNS to be provisioned... (attempt $i/50)" >&2;
-      sleep 10;
-    done
-  environment:
-    KUBECONFIG: /home/ec2-user/.kube/config
-  register: elb_output
-  changed_when: false
-  failed_when: "elb_output.stdout is not defined or elb_output.stdout | length == 0"
 
 - name: Print application endpoint URLs
   ansible.builtin.debug:
     msg: |
       The application is deployed successfully.
       Access the endpoints below in your browser:
-      http://{{ elb_output.stdout }}:80
+      http://{{ elb_hostname.stdout }}:80
 
 - name: Test Gandalf endpoint via curl
-  ansible.builtin.shell: "curl -s -o /dev/null -w '%{http_code}' http://{{ elb_output.stdout }}:80/gandalf"
+  ansible.builtin.shell: "curl -s -o /dev/null -w '%{http_code}' http://{{ elb_hostname.stdout }}:80/gandalf"
   register: gandalf_curl_status
   retries: 5
   delay: 10
   until: gandalf_curl_status.rc == 0 and gandalf_curl_status.stdout == "200"
 
 - name: Test Colombo endpoint via curl
-  ansible.builtin.shell: "curl -s -o /dev/null -w '%{http_code}' http://{{ elb_output.stdout }}:80/colombo"
+  ansible.builtin.shell: "curl -s -o /dev/null -w '%{http_code}' http://{{ elb_hostname.stdout }}:80/colombo"
   register: colombo_curl_status
   retries: 5
   delay: 10
