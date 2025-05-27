@@ -2,6 +2,7 @@
 
 This project gives you a full DevOps pipeline! We're deploying a simple **Flask web application** on **AWS EKS** (Amazon Elastic Kubernetes Service) and then monitoring it effectively with **Prometheus**, which runs on a dedicated **EC2 instance**. Our Flask app is designed to track and expose metrics, specifically counting requests to its `/gandalf` and `/colombo` endpoints.
 
+
 ---
 
 ## 🚀 Get Started
