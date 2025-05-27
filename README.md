@@ -76,14 +76,12 @@ Ready to see it in action? Follow these simple steps:
 
 First, get the code onto your machine:
 
-```bash
 git clone <repo-url> # Replace <repo-url> with repository's URL
 cd adcash-test
 
 2️⃣ Run the Interactive Script
 This script makes it easy to manage the project's lifecycle:
 
-```bash
 sh run.sh
 
 You'll then see a menu with these options:
