@@ -80,6 +80,15 @@ resource "aws_security_group" "ec2_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # or restrict to your IP for security
+    description = "Allow Prometheus access"
+  }
+ 
+
   egress {
     from_port   = 0
     to_port     = 0
